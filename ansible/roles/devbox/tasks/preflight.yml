@@ -1,0 +1,57 @@
+---
+- name: Resolve remote user information
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ ansible_user }}"
+
+- name: Set resolved paths
+  ansible.builtin.set_fact:
+    devbox_user: "{{ ansible_user }}"
+    devbox_home: "{{ ansible_facts.getent_passwd[ansible_user][4] }}"
+    devbox_resolved_workspace: >-
+      {{
+        (ansible_facts.getent_passwd[ansible_user][4] ~ workspace_dir[1:])
+        if workspace_dir.startswith('~') else workspace_dir
+      }}
+
+- name: Verify the supported operating system
+  ansible.builtin.assert:
+    that:
+      - ansible_distribution == 'Ubuntu'
+      - ansible_distribution_version in ['22.04', '24.04']
+    fail_msg: "Supported targets are Ubuntu 22.04 and 24.04 only; found {{ ansible_distribution }} {{ ansible_distribution_version }}"
+
+- name: Verify the supported CPU architecture
+  ansible.builtin.assert:
+    that:
+      - ansible_architecture == 'x86_64'
+    fail_msg: "Supported architecture is amd64 only; found {{ ansible_architecture }}"
+
+- name: Verify passwordless sudo
+  ansible.builtin.command: /usr/bin/true
+  become: true
+  changed_when: false
+
+- name: Verify outbound HTTPS
+  ansible.builtin.uri:
+    url: https://github.com
+    method: HEAD
+    status_code: [200, 301, 302]
+    timeout: 15
+  register: devbox_network_check
+  retries: 2
+  delay: 2
+  until: devbox_network_check is succeeded
+
+- name: Read available space
+  ansible.builtin.shell: "df -Pk {{ devbox_home | quote }} | awk 'NR == 2 {print $4}'"
+  args:
+    executable: /bin/bash
+  register: devbox_available_kib
+  changed_when: false
+
+- name: Verify at least 4 GiB is available
+  ansible.builtin.assert:
+    that:
+      - devbox_available_kib.stdout | int > 4194304
+    fail_msg: "At least 4 GiB of free disk space is required"

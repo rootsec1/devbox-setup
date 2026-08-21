@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+readonly VERSION="0.1.0"
+ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly ROOT_DIR
+
+usage() {
+  cat <<'EOF'
+Usage:
+  devbox setup  --host HOST --user USER [options]
+  devbox doctor --host HOST --user USER [options]
+  devbox --help | --version
+
+Required:
+  --host HOST              Remote hostname or IP address
+  --user USER              Remote SSH user with passwordless sudo
+
+Options:
+  --port PORT              SSH port (default: 22)
+  --identity PATH          SSH private key; otherwise SSH_AUTH_SOCK is used
+  --known-hosts PATH       Known-hosts file (default: ~/.ssh/known_hosts)
+  --config PATH            Profile (default: ./devbox.yml)
+  -h, --help               Show this help
+  --version                Show the version
+
+Host key verification is always enabled. Credentials are never copied to the
+remote machine. Run `codex login --device-auth` on the devbox after setup.
+EOF
+}
+
+die() {
+  printf 'devbox: %s\n' "$*" >&2
+  exit 2
+}
+
+absolute_file() {
+  local path="$1"
+  [[ -f "$path" ]] || die "file not found: $path"
+  realpath "$path"
+}
+
+[[ $# -gt 0 ]] || { usage; exit 2; }
+
+case "$1" in
+  -h|--help)
+    usage
+    exit 0
+    ;;
+  --version)
+    printf 'devbox %s\n' "$VERSION"
+    exit 0
+    ;;
+  setup|doctor)
+    command_name="$1"
+    shift
+    ;;
+  *)
+    die "unknown command: $1"
+    ;;
+esac
+
+host=""
+remote_user=""
+port="22"
+identity=""
+known_hosts="${HOME}/.ssh/known_hosts"
+config="${ROOT_DIR}/devbox.yml"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --host|--user|--port|--identity|--known-hosts|--config)
+      [[ $# -ge 2 ]] || die "$1 requires a value"
+      case "$1" in
+        --host) host="$2" ;;
+        --user) remote_user="$2" ;;
+        --port) port="$2" ;;
+        --identity) identity="$2" ;;
+        --known-hosts) known_hosts="$2" ;;
+        --config) config="$2" ;;
+      esac
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      die "unknown option: $1"
+      ;;
+  esac
+done
+
+[[ -n "$host" ]] || die "--host is required"
+[[ -n "$remote_user" ]] || die "--user is required"
+[[ "$host" =~ ^[A-Za-z0-9._-]+$ ]] || die "invalid --host value"
+[[ "$remote_user" =~ ^[a-z_][a-z0-9_-]*$ ]] || die "invalid --user value"
+[[ "$port" =~ ^[0-9]+$ ]] && (( port >= 1 && port <= 65535 )) || die "invalid --port value"
+
+command -v docker >/dev/null 2>&1 || die "Docker Engine with Compose v2 is required"
+docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is required"
+
+config="$(absolute_file "$config")"
+known_hosts="$(absolute_file "$known_hosts")"
+
+export DEVBOX_COMMAND="$command_name"
+export DEVBOX_HOST="$host"
+export DEVBOX_USER="$remote_user"
+export DEVBOX_PORT="$port"
+export DEVBOX_CONFIG_PATH="$config"
+export DEVBOX_KNOWN_HOSTS_PATH="$known_hosts"
+export DEVBOX_IDENTITY_PATH="/dev/null"
+export DEVBOX_AGENT_SOCKET="/dev/null"
+export DEVBOX_AUTH_MODE=""
+
+if [[ -n "$identity" ]]; then
+  export DEVBOX_IDENTITY_PATH="$(absolute_file "$identity")"
+  export DEVBOX_AUTH_MODE="identity"
+elif [[ -n "${SSH_AUTH_SOCK:-}" && -S "${SSH_AUTH_SOCK}" ]]; then
+  export DEVBOX_AGENT_SOCKET="$(realpath "$SSH_AUTH_SOCK")"
+  export DEVBOX_AUTH_MODE="agent"
+else
+  die "provide --identity or start an SSH agent with a loaded key"
+fi
+
+exec docker compose \
+  --project-directory "$ROOT_DIR" \
+  --file "$ROOT_DIR/compose.yaml" \
+  run --rm controller

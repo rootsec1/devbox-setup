@@ -1,0 +1,88 @@
+---
+- name: Verify the remote development box
+  hosts: all
+  gather_facts: true
+  any_errors_fatal: true
+  tasks:
+    - name: Run platform preflight checks
+      ansible.builtin.import_role:
+        name: devbox
+        tasks_from: preflight
+
+    - name: Build the expected command list
+      ansible.builtin.set_fact:
+        devbox_expected_commands: >-
+          {{
+            ['git', 'git-lfs', 'curl', 'jq', 'rg', 'fd', 'fzf', 'bat', 'tmux', 'zsh', 'shellcheck']
+            + (['node', 'npm'] if runtimes.node.enabled else [])
+            + (['python', 'pip'] if runtimes.python.enabled else [])
+            + (['go'] if runtimes.go.enabled else [])
+            + (['docker'] if features.docker else [])
+            + (['gh'] if features.github_cli else [])
+            + (['codex'] if features.codex.enabled else [])
+          }}
+
+    - name: Verify commands in a fresh login shell
+      ansible.builtin.command:
+        argv:
+          - /bin/bash
+          - -lc
+          - |
+            set -euo pipefail
+            {% for command in devbox_expected_commands %}
+            command -v {{ command | quote }} >/dev/null
+            {% endfor %}
+      changed_when: false
+
+    - name: Read runtime versions
+      ansible.builtin.command:
+        argv:
+          - /bin/bash
+          - -lc
+          - |
+            set -euo pipefail
+            {% if runtimes.node.enabled %}node --version{% endif %}
+            {% if runtimes.python.enabled %}python --version{% endif %}
+            {% if runtimes.go.enabled %}go version{% endif %}
+            {% if features.github_cli %}gh --version{% endif %}
+            {% if features.codex.enabled %}codex --version{% endif %}
+      register: devbox_version_output
+      changed_when: false
+
+    - name: Verify configured runtime major versions
+      ansible.builtin.assert:
+        that:
+          - not runtimes.node.enabled or ('v' ~ runtimes.node.version ~ '.') in devbox_version_output.stdout
+          - not runtimes.python.enabled or ('Python ' ~ runtimes.python.version ~ '.') in devbox_version_output.stdout
+          - not runtimes.go.enabled or ('go' ~ runtimes.go.version ~ '.') in devbox_version_output.stdout
+          - not features.codex.enabled or features.codex.version in devbox_version_output.stdout
+        fail_msg: "One or more runtime versions do not match devbox.yml"
+
+    - name: Verify Docker daemon access without sudo
+      ansible.builtin.command:
+        argv:
+          - /bin/bash
+          - -lc
+          - docker info && docker compose version
+      register: devbox_docker_info
+      changed_when: false
+      when: features.docker
+
+    - name: Verify the workspace exists
+      ansible.builtin.stat:
+        path: "{{ devbox_resolved_workspace }}"
+      register: devbox_workspace_stat
+
+    - name: Assert workspace state
+      ansible.builtin.assert:
+        that:
+          - devbox_workspace_stat.stat.isdir | default(false)
+        fail_msg: "Workspace directory is missing"
+
+    - name: Report doctor results
+      ansible.builtin.debug:
+        msg:
+          - "Devbox is healthy."
+          - "{{ devbox_version_output.stdout_lines }}"
+          - "Codex is installed but authentication is user-managed."
+          - "On a headless host, run: codex login --device-auth"

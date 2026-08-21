@@ -1,0 +1,139 @@
+name: devbox-setup
+
+x-controller: &controller
+  build:
+    context: .
+    dockerfile: controller/Dockerfile
+    network: host
+  image: devbox-setup-controller:local
+  working_dir: /workspace
+  volumes:
+    - .:/workspace:ro
+
+services:
+  controller:
+    <<: *controller
+    entrypoint: ["/workspace/scripts/run-controller.sh"]
+    environment:
+      DEVBOX_COMMAND: ${DEVBOX_COMMAND:-}
+      DEVBOX_HOST: ${DEVBOX_HOST:-}
+      DEVBOX_USER: ${DEVBOX_USER:-}
+      DEVBOX_PORT: ${DEVBOX_PORT:-22}
+      DEVBOX_AUTH_MODE: ${DEVBOX_AUTH_MODE:-}
+    volumes:
+      - .:/workspace:ro
+      - ${DEVBOX_CONFIG_PATH:-./devbox.yml}:/run/devbox/config.yml:ro
+      - ${DEVBOX_KNOWN_HOSTS_PATH:-/dev/null}:/run/devbox/known_hosts:ro
+      - ${DEVBOX_IDENTITY_PATH:-/dev/null}:/run/devbox/identity:ro
+      - ${DEVBOX_AGENT_SOCKET:-/dev/null}:/run/devbox/agent
+
+  static:
+    <<: *controller
+    profiles: ["test"]
+    network_mode: host
+    entrypoint: ["/bin/bash", "/workspace/tests/static.sh"]
+
+  keygen:
+    <<: *controller
+    profiles: ["test"]
+    network_mode: host
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - >-
+        if [ ! -s /keys/id_ed25519 ]; then
+          ssh-keygen -q -t ed25519 -N '' -f /keys/id_ed25519;
+        fi;
+        chmod 600 /keys/id_ed25519
+    volumes:
+      - test-ssh:/keys
+
+  ubuntu-2204:
+    profiles: ["test"]
+    privileged: true
+    network_mode: host
+    build:
+      context: .
+      dockerfile: tests/target/Dockerfile
+      network: host
+      args:
+        UBUNTU_VERSION: "22.04"
+    hostname: ubuntu-2204
+    environment:
+      DEVBOX_TEST_SSH_PORT: "2204"
+    depends_on:
+      keygen:
+        condition: service_completed_successfully
+    volumes:
+      - test-ssh:/run/test-keys:ro
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /home/devbox/.ssh/authorized_keys && pgrep -x sshd >/dev/null"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  ubuntu-2404:
+    profiles: ["test"]
+    privileged: true
+    network_mode: host
+    build:
+      context: .
+      dockerfile: tests/target/Dockerfile
+      network: host
+      args:
+        UBUNTU_VERSION: "24.04"
+    hostname: ubuntu-2404
+    environment:
+      DEVBOX_TEST_SSH_PORT: "2404"
+    depends_on:
+      keygen:
+        condition: service_completed_successfully
+    volumes:
+      - test-ssh:/run/test-keys:ro
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /home/devbox/.ssh/authorized_keys && pgrep -x sshd >/dev/null"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  ubuntu-minimal:
+    profiles: ["test"]
+    privileged: true
+    network_mode: host
+    build:
+      context: .
+      dockerfile: tests/target/Dockerfile
+      network: host
+      args:
+        UBUNTU_VERSION: "24.04"
+    hostname: ubuntu-minimal
+    environment:
+      DEVBOX_TEST_SSH_PORT: "2405"
+    depends_on:
+      keygen:
+        condition: service_completed_successfully
+    volumes:
+      - test-ssh:/run/test-keys:ro
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /home/devbox/.ssh/authorized_keys && pgrep -x sshd >/dev/null"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  e2e:
+    <<: *controller
+    profiles: ["test"]
+    network_mode: host
+    entrypoint: ["/bin/bash", "/workspace/tests/e2e.sh"]
+    depends_on:
+      ubuntu-2204:
+        condition: service_healthy
+      ubuntu-2404:
+        condition: service_healthy
+      ubuntu-minimal:
+        condition: service_healthy
+    volumes:
+      - .:/workspace:ro
+      - test-ssh:/run/test-keys:ro
+
+volumes:
+  test-ssh:

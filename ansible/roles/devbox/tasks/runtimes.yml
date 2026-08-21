@@ -1,0 +1,43 @@
+---
+- name: Install mise
+  ansible.builtin.shell: |
+    set -euo pipefail
+    curl -fsSL https://mise.run | sh
+  args:
+    executable: /bin/bash
+    creates: "{{ devbox_home }}/.local/bin/mise"
+  become: false
+
+- name: Create mise configuration directory
+  ansible.builtin.file:
+    path: "{{ devbox_home }}/.config/mise"
+    state: directory
+    mode: "0755"
+  become: false
+
+- name: Configure pinned runtime major lines
+  ansible.builtin.copy:
+    dest: "{{ devbox_home }}/.config/mise/config.toml"
+    mode: "0644"
+    content: |
+      [tools]
+      {% if runtimes.node.enabled %}node = "{{ runtimes.node.version }}"{% endif %}
+      {% if runtimes.python.enabled %}python = "{{ runtimes.python.version }}"{% endif %}
+      {% if runtimes.go.enabled %}go = "{{ runtimes.go.version }}"{% endif %}
+  become: false
+  register: devbox_mise_config
+
+- name: Install configured runtimes
+  ansible.builtin.command: "{{ devbox_home }}/.local/bin/mise install --yes"
+  environment:
+    MISE_CONFIG_FILE: "{{ devbox_home }}/.config/mise/config.toml"
+  become: false
+  register: devbox_mise_install
+  changed_when: devbox_mise_config.changed
+
+- name: Refresh mise shims
+  ansible.builtin.command: "{{ devbox_home }}/.local/bin/mise reshim"
+  environment:
+    MISE_CONFIG_FILE: "{{ devbox_home }}/.config/mise/config.toml"
+  become: false
+  changed_when: false

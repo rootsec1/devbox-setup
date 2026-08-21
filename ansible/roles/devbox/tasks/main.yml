@@ -1,0 +1,32 @@
+---
+- name: Run preflight checks
+  ansible.builtin.import_tasks: preflight.yml
+  tags: [preflight]
+
+- name: Install base development tools
+  ansible.builtin.import_tasks: base.yml
+  tags: [base]
+
+- name: Install Docker Engine
+  ansible.builtin.import_tasks: docker.yml
+  when: features.docker
+  tags: [docker]
+
+- name: Install GitHub CLI
+  ansible.builtin.import_tasks: github.yml
+  when: features.github_cli
+  tags: [github]
+
+- name: Install language runtimes
+  ansible.builtin.import_tasks: runtimes.yml
+  when: runtimes.node.enabled or runtimes.python.enabled or runtimes.go.enabled
+  tags: [runtimes]
+
+- name: Install Codex CLI
+  ansible.builtin.import_tasks: codex.yml
+  when: features.codex.enabled
+  tags: [codex]
+
+- name: Configure the user environment
+  ansible.builtin.import_tasks: shell.yml
+  tags: [shell]

@@ -1,0 +1,7 @@
+.env
+.DS_Store
+*.retry
+*.log
+.cache/
+__pycache__/
+*.pyc

@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rootsec1/devbox-setup/devbox.schema.json",
+  "title": "devbox-setup profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["workspace_dir", "runtimes", "features", "extra_packages"],
+  "properties": {
+    "workspace_dir": {
+      "type": "string",
+      "pattern": "^(~/|/)[^\\n\\r]+$",
+      "minLength": 2
+    },
+    "runtimes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node", "python", "go"],
+      "properties": {
+        "node": {"$ref": "#/$defs/runtime"},
+        "python": {"$ref": "#/$defs/runtime"},
+        "go": {"$ref": "#/$defs/runtime"}
+      }
+    },
+    "features": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["docker", "github_cli", "codex"],
+      "properties": {
+        "docker": {"type": "boolean"},
+        "github_cli": {"type": "boolean"},
+        "codex": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "version"],
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"}
+          }
+        }
+      }
+    },
+    "extra_packages": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9+.-]*$"
+      }
+    }
+  },
+  "$defs": {
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "version"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "version": {"type": "string", "pattern": "^[0-9]+(?:\\.[0-9]+)?$"}
+      }
+    }
+  }
+}
