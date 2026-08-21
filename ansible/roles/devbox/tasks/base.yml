@@ -1,0 +1,33 @@
+---
+- name: Install base packages
+  ansible.builtin.apt:
+    name: >-
+      {{
+        [
+          'bash', 'build-essential', 'ca-certificates', 'curl', 'fzf', 'git',
+          'git-lfs', 'gnupg', 'jq', 'libbz2-dev', 'libffi-dev', 'liblzma-dev',
+          'libreadline-dev', 'libsqlite3-dev', 'libssl-dev', 'procps', 'ripgrep',
+          'shellcheck', 'tar', 'tmux', 'unzip', 'wget', 'xz-utils', 'zip', 'zlib1g-dev',
+          'zsh', 'fd-find', 'bat'
+        ] + extra_packages
+      }}
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+
+- name: Expose Ubuntu command aliases
+  ansible.builtin.file:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    state: link
+  become: true
+  loop:
+    - {src: /usr/bin/fdfind, dest: /usr/local/bin/fd}
+    - {src: /usr/bin/batcat, dest: /usr/local/bin/bat}
+
+- name: Initialize Git LFS
+  ansible.builtin.command: git lfs install --skip-repo
+  become: false
+  register: devbox_git_lfs_install
+  changed_when: "'Updated Git hooks' in devbox_git_lfs_install.stdout"

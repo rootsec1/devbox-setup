@@ -1,0 +1,7 @@
+---
+- name: Configure an AI-ready development box
+  hosts: all
+  gather_facts: true
+  any_errors_fatal: true
+  roles:
+    - role: devbox

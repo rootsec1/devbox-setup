@@ -1,0 +1,29 @@
+---
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Static checks
+        run: docker compose --profile test run --build --rm static
+      - name: Live provisioning matrix
+        run: >-
+          docker compose --profile test up --build
+          --abort-on-container-exit --exit-code-from e2e e2e
+      - name: Logs on failure
+        if: failure()
+        run: docker compose --profile test logs --no-color
+      - name: Clean up
+        if: always()
+        run: docker compose --profile test down --volumes --remove-orphans

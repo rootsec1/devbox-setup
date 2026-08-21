@@ -1,0 +1,5 @@
+---
+profile: production
+skip_list:
+  # Public profile fields intentionally remain concise and unprefixed.
+  - var-naming[no-role-prefix]

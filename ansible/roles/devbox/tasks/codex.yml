@@ -1,0 +1,28 @@
+---
+- name: Read installed Codex version
+  ansible.builtin.shell: |
+    set -o pipefail
+    {{ devbox_home }}/.local/bin/mise exec node@{{ runtimes.node.version }} -- \
+      npm list --global @openai/codex --depth=0 2>/dev/null | \
+      sed -n 's/.*@openai\/codex@\([0-9.]*\).*/\1/p'
+  args:
+    executable: /bin/bash
+  become: false
+  register: devbox_installed_codex
+  changed_when: false
+  failed_when: false
+
+- name: Install pinned Codex CLI
+  ansible.builtin.command: >-
+    {{ devbox_home }}/.local/bin/mise exec node@{{ runtimes.node.version }} --
+    npm install --global @openai/codex@{{ features.codex.version }}
+  become: false
+  when: devbox_installed_codex.stdout | trim != features.codex.version
+  changed_when: true
+
+- name: Refresh Codex shim
+  ansible.builtin.command: "{{ devbox_home }}/.local/bin/mise reshim"
+  environment:
+    MISE_CONFIG_FILE: "{{ devbox_home }}/.config/mise/config.toml"
+  become: false
+  changed_when: false

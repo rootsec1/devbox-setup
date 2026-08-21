@@ -1,0 +1,22 @@
+---
+- name: Create the workspace directory
+  ansible.builtin.file:
+    path: "{{ devbox_resolved_workspace }}"
+    state: directory
+    mode: "0755"
+  become: false
+
+- name: Add the managed environment block to shell files
+  ansible.builtin.blockinfile:
+    path: "{{ devbox_home }}/{{ item }}"
+    create: true
+    mode: "0644"
+    marker: "# {mark} DEVBOX-SETUP MANAGED BLOCK"
+    block: |
+      # mise-managed runtimes and globally installed developer CLIs
+      export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
+  become: false
+  loop:
+    - .profile
+    - .bashrc
+    - .zshrc
